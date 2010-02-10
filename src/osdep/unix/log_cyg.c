@@ -36,10 +36,20 @@
 long loginpw (struct passwd *pw,int argc,char *argv[])
 {
   uid_t uid = pw->pw_uid;
+
+  /* the CRAM-MD5 code flow doesn't call checkpw() */
+  if (auth_md5.server)
+  {
+    if (cyg_user) fs_give ((void **) &cyg_user);
+    cyg_user = cpystr(pw->pw_name);
+  }
+  else
+  {
 				/* must be same user name as last checkpw() */
-  if (!(cyg_user && !strcmp (pw->pw_name,cyg_user))) return NIL;
+    if (!(cyg_user && !strcmp (pw->pw_name,cyg_user))) return NIL;
 				/* do the ImpersonateLoggedOnUser() */
-  cygwin_set_impersonation_token (cyg_hdl);
+    cygwin_set_impersonation_token (cyg_hdl);
+  }
 
   return !(setgid (pw->pw_gid) || initgroups (cyg_user,pw->pw_gid) ||
 	   setuid (uid));
