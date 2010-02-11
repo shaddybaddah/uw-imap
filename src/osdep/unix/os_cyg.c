@@ -41,6 +41,7 @@
 extern int errno;		/* just in case */
 #include <pwd.h>
 #include <crypt.h>
+#include <unistd.h>
 #include "misc.h"
 
 
@@ -57,6 +58,10 @@ extern int errno;		/* just in case */
 #include "flockcyg.c"
 #include "gethstid.c"
 
+/* compromise (for sake of a reasonable stack frame and avoiding calling
+   malloc. if we can't find the Administrators gid within the bounds, be
+   prudent and return 0 uid */
+#define GIDS_FOR_SEARCH_SIZE 12
 
 /* Emulator for geteuid() call
  * Returns: effective UID
@@ -66,6 +71,19 @@ extern int errno;		/* just in case */
 
 uid_t Geteuid (void)
 {
+  gid_t my_gids[GIDS_FOR_SEARCH_SIZE];
+  int num_gids, idx;
   uid_t ret = geteuid ();
-  return (ret == SYSTEMUID) ? 0 : ret;
+  if (ret == SYSTEMUID)
+    return 0;
+  
+  /* find if the groups the process owner is in includes Administrators */
+  num_gids = getgroups(GIDS_FOR_SEARCH_SIZE, my_gids);
+  for (idx = 0;
+       (idx < num_gids) && (my_gids[idx] != ADMINISTRATORSGID);
+       idx++);
+
+  /* if we are in Administrators (idx within my_gids) then return root uid,
+     else the user can be considered preauth'ed */
+  return (idx < num_gids) ? 0 : ret;
 }

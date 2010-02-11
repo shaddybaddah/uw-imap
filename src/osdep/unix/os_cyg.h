@@ -47,6 +47,8 @@
 #define setpgrp setpgid
 
 #define SYSTEMUID 18		/* Cygwin returns this for SYSTEM */
+#define ADMINISTRATORSGID 544	/* Cygwin returns this for Administrators */
+
 #define geteuid Geteuid
 uid_t Geteuid (void);
 
