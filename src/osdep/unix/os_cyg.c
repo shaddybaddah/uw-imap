@@ -40,8 +40,8 @@
 #include <errno.h>
 extern int errno;		/* just in case */
 #include <pwd.h>
+#include <grp.h>
 #include <crypt.h>
-#include <unistd.h>
 #include "misc.h"
 
 
@@ -58,10 +58,6 @@ extern int errno;		/* just in case */
 #include "flockcyg.c"
 #include "gethstid.c"
 
-/* compromise (for sake of a reasonable stack frame and avoiding calling
-   malloc. if we can't find the Administrators gid within the bounds, be
-   prudent and return 0 uid */
-#define GIDS_FOR_SEARCH_SIZE 12
 
 /* Emulator for geteuid() call
  * Returns: effective UID
@@ -69,21 +65,44 @@ extern int errno;		/* just in case */
 
 #undef geteuid
 
+#define GIDS_FOR_SEARCH_SIZE 12
+
 uid_t Geteuid (void)
 {
+  struct passwd *pwent = NULL;
+  struct group *grent = NULL;
+  /* compromise (for sake of a reasonable stack frame and avoiding calling
+     malloc. if we can't find the Administrators gid within the bounds, be
+     prudent and return 0 uid */
   gid_t my_gids[GIDS_FOR_SEARCH_SIZE];
-  int num_gids, idx;
+  int num_gids;
   uid_t ret = geteuid ();
-  if (ret == SYSTEMUID)
-    return 0;
-  
-  /* find if the groups the process owner is in includes Administrators */
-  num_gids = getgroups(GIDS_FOR_SEARCH_SIZE, my_gids);
-  for (idx = 0;
-       (idx < num_gids) && (my_gids[idx] != ADMINISTRATORSGID);
-       idx++);
 
-  /* if we are in Administrators (idx within my_gids) then return root uid,
-     else the user can be considered preauth'ed */
+  /* find the real uid for SYSTEM */
+  for (pwent = getpwent();
+       (pwent != NULL) && (strcmp (SYSTEMUSERSID, pwent->pw_passwd) != 0);
+       pwent = getpwent());
+
+  /* if we find the real uid for SYSTEM and our effective uid is the same
+     then we return the uid of the root user */
+  if ((pwent != NULL) && (ret == pwent->pw_uid))
+    return 0;
+
+  /* find the real gid for Administrators */
+  for (grent = getgrent();
+       (grent != NULL) && (strcmp (ADMINISTRATORSGROUPSID, grent->gr_gid) != 0);
+       grent = getgrent());
+
+  /* if we cannot find the real gid for Administrators, take the most
+     prudent approach and indicate this is a privileged account (that
+     cannot be preauth'ed) */
+  if (grent == NULL)
+    return 0;
+
+  num_gids = getgroups(GIDS_FOR_SEARCH_SIZE, my_gids);
+  for (int idx = 0;
+       (ifx < num_gids) && (my_gids[idx] != grent->gr_gid);
+       idx++);
+  
   return (idx < num_gids) ? 0 : ret;
 }
